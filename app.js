@@ -4,7 +4,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_MGFI1UB-daHCevroNB60mg_wz1UMbFT';
 const VAPID_PUBLIC_KEY = 'VOTRE_VAPID_PUBLIC_KEY';
 /* ================================================== */
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const CATS = ['Céréales & Féculents','Huiles & Condiments','Boissons','Conserves','Produits frais','Épicerie sèche'];
+const CATS = ['Céréales & Féculents','Huiles & Condiments','Produits laitiers','Conserves','Produits frais','Épicerie sèche'];
 const UNITS = ['sac','carton','kg','litre','bouteille','paquet','unité'];
 const TYPES = {entree:'Entrée livraison',vente:'Vente',perte:'Perte / Péremption',inventaire:'Inventaire'};
 let me=null, products=[], moves=[], cat='Tous', q='', view='stock', loginTab='owner', deferred=null, timer;
