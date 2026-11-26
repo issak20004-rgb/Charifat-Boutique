@@ -1,7 +1,7 @@
 /* ===== CONFIGURATION : collez vos valeurs ici ===== */
 const SUPABASE_URL = 'https://rzopyxmyazzvokpkaabl.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_MGFI1UB-daHCevroNB60mg_wz1UMbFT';
-const VAPID_PUBLIC_KEY = 'VOTRE_VAPID_PUBLIC_KEY';
+const VAPID_PUBLIC_KEY = 'BNiN0c-DMxoS4O9_vGLZ5cuyTqDTvbo0CXvvLHfXU8o2wEk0Rs56_-SHIqGb3zXBMcImpJDvT7Koi5YbFWoGTNI';
 /* ================================================== */
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const CATS = ['Céréales & Féculents','Huiles & Condiments','Produits laitiers','Conserves','Produits frais','Épicerie sèche'];
