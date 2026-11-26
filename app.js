@@ -60,17 +60,18 @@ async function start(){
 }
 async function load(){
  const [p,m]=await Promise.all([sb.from('products').select('*').order('name'),
-  sb.from('stock_movements').select('*').order('created_at',{ascending:false}).limit(200)]);
+  sb.from('stock_movements').select('*').order('created_at',{ascending:false}).limit(1000)]);
  products=p.data||[]; moves=m.data||[];
 }
 function render(){
- const tabs=[['stock','📦 Stock'],['hist','🕘 Historique'],['set','⚙️ Réglages']];
+ const tabs=[['stock','📦 Stock'],['graph','📊 Graphiques'],['hist','🕘 Historique'],['set','⚙️ Réglages']];
  $('#app').innerHTML=`<header class="sticky top-0 z-10 flex items-center gap-3 p-3 text-white" style="background:var(--o)">${logo}
  <div class="flex-1"><b>CHARIFAT BOUTIQUE</b><div class="text-xs opacity-90">${esc(me.name)} · ${isOwner()?'Propriétaire':'Gérant'}</div></div>
  <button onclick="logout()" class="text-sm underline">Quitter</button></header>
  <nav class="flex bg-white shadow-sm">${tabs.map(t=>`<button class="tab ${view==t[0]?'on':''}" onclick="view='${t[0]}';render()">${t[1]}</button>`).join('')}</nav>
- <main class="p-3 pb-24">${view=='stock'?stockView():view=='hist'?histView():setView()}</main>`;
+ <main class="p-3 pb-24">${view=='stock'?stockView():view=='hist'?histView():view=='graph'?graphView():setView()}</main>`;
  if(view=='stock') renderList();
+ if(view=='graph') drawCharts();
 }
 function stockView(){
  const low=products.filter(p=>p.quantity<=p.alert_threshold).length;
@@ -98,11 +99,36 @@ function renderList(){
  <button class="btn2" onclick="productModal('${p.id}')">✎</button></div>`}).join('')||'<p class="text-center text-gray-500 py-8">Aucun produit</p>';
 }
 function histView(){
- return `<div class="space-y-2">${moves.map(m=>`<div class="card text-sm"><div class="flex justify-between"><b>${esc(m.product_name)}</b>
+ return `<div class="space-y-2">${moves.slice(0,200).map(m=>`<div class="card text-sm"><div class="flex justify-between"><b>${esc(m.product_name)}</b>
  <b class="${m.qty_change<0?'text-red-600':'text-green-700'}">${m.qty_change>0?'+':''}${fmt(m.qty_change)}</b></div>
  <div>${TYPES[m.type]} · ${fmt(m.stock_before)} → ${fmt(m.stock_after)}</div>${m.note?`<div class="text-gray-500">${esc(m.note)}</div>`:''}
  <div class="text-xs text-gray-400">${esc(m.user_name)} (${m.user_role=='owner'?'propriétaire':'gérant'}) · ${new Date(m.created_at).toLocaleString('fr-FR')}</div>
  ${isOwner()?`<button class="text-xs text-red-600" onclick="delMove('${m.id}')">Supprimer</button>`:''}</div>`).join('')||'<p class="text-center text-gray-500">Aucun mouvement</p>'}</div>`;
+}
+let charts=[];
+function graphView(){
+ const c=(id,t,h=220)=>`<div class="card"><b>${t}</b><div class="mt-2"><canvas id="${id}" height="${h}"></canvas></div></div>`;
+ return `<div class="space-y-3">${c('c1','Références par catégorie')}${c('c2','Activité des 14 derniers jours (nombre de mouvements)')}
+ ${c('c3','Top 5 des produits les plus vendus')}${c('c4','Stock le plus bas vs seuil d\'alerte',260)}
+ ${isOwner()?c('c5','Valeur du stock par catégorie'):''}</div>`;
+}
+function drawCharts(){
+ if(typeof Chart==='undefined') return;
+ charts.forEach(x=>x.destroy()); charts=[];
+ const O='#F57C00',G='#1B5E20',R='#D32F2F',pal=['#F57C00','#1B5E20','#FBC02D','#0288D1','#8E24AA','#6D4C41'];
+ const mk=(id,cfg)=>{const e=$('#'+id);if(e)charts.push(new Chart(e,cfg))};
+ mk('c1',{type:'doughnut',data:{labels:CATS,datasets:[{data:CATS.map(c=>products.filter(p=>p.category==c).length),backgroundColor:pal}]},options:{plugins:{legend:{position:'bottom'}}}});
+ const key=d=>new Date(d).toLocaleDateString('sv-SE');
+ const dd=[...Array(14)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-13+i);return key(d)});
+ const cnt=t=>dd.map(d=>moves.filter(m=>m.type==t&&key(m.created_at)==d).length);
+ mk('c2',{type:'bar',data:{labels:dd.map(d=>d.slice(8)+'/'+d.slice(5,7)),datasets:[{label:'Entrées',data:cnt('entree'),backgroundColor:G},{label:'Ventes',data:cnt('vente'),backgroundColor:O},{label:'Pertes',data:cnt('perte'),backgroundColor:R}]},
+  options:{scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{precision:0}}},plugins:{legend:{position:'bottom'}}}});
+ const sold={};moves.filter(m=>m.type=='vente').forEach(m=>sold[m.product_name]=(sold[m.product_name]||0)-m.qty_change);
+ const top=Object.entries(sold).sort((a,b)=>b[1]-a[1]).slice(0,5);
+ mk('c3',{type:'bar',data:{labels:top.map(t=>t[0]),datasets:[{label:'Quantité vendue',data:top.map(t=>t[1]),backgroundColor:O}]},options:{indexAxis:'y',plugins:{legend:{display:false}}}});
+ const low=[...products].sort((a,b)=>(a.quantity-a.alert_threshold)-(b.quantity-b.alert_threshold)).slice(0,8);
+ mk('c4',{type:'bar',data:{labels:low.map(p=>p.name),datasets:[{label:'Stock',data:low.map(p=>p.quantity),backgroundColor:low.map(p=>p.quantity<=p.alert_threshold?R:G)},{label:'Seuil',data:low.map(p=>p.alert_threshold),backgroundColor:'#BDBDBD'}]},options:{indexAxis:'y',plugins:{legend:{position:'bottom'}}}});
+ mk('c5',{type:'bar',data:{labels:CATS,datasets:[{label:'Valeur',data:CATS.map(c=>products.filter(p=>p.category==c).reduce((s,p)=>s+p.quantity*p.price,0)),backgroundColor:pal}]},options:{plugins:{legend:{display:false}}}});
 }
 function setView(){
  return `<div class="space-y-3"><div class="card"><b>🔔 Notifications</b><p class="text-sm text-gray-500 my-2">Alertes même téléphone verrouillé.</p>
