@@ -1,0 +1,11 @@
+:root{--o:#F57C00;--g:#1B5E20}
+body{background:#FFF8F0;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);font-family:system-ui,sans-serif}
+.btn{background:var(--o);color:#fff;font-weight:600;border-radius:.75rem;padding:.6rem 1rem}
+.btn2{background:#fff;border:1px solid #ddd;border-radius:.75rem;padding:.6rem 1rem}
+.btn:active,.btn2:active{transform:scale(.97)}
+.card{background:#fff;border-radius:1rem;box-shadow:0 1px 4px #0001;padding:.9rem}
+.inp{width:100%;border:1px solid #ddd;border-radius:.75rem;padding:.65rem;background:#fff}
+.chip{white-space:nowrap;padding:.35rem .8rem;border-radius:999px;background:#fff;border:1px solid #ddd;font-size:.85rem}
+.chip.on{background:var(--g);color:#fff;border-color:var(--g)}
+.tab{flex:1;padding:.7rem;font-weight:600;border-bottom:3px solid transparent}
+.tab.on{color:var(--o);border-color:var(--o)}
