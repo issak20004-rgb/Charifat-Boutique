@@ -7,7 +7,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const CATS = ['Céréales & Féculents','Huiles & Condiments','Produits laitiers','Conserves','Produits frais','Épicerie sèche'];
 const UNITS = ['sac','carton','kg','litre','bouteille','paquet','unité'];
 const TYPES = {entree:'Entrée livraison',vente:'Vente',perte:'Perte / Péremption',inventaire:'Inventaire'};
-let me=null, products=[], moves=[], cat='Tous', q='', view='stock', loginTab='owner', deferred=null, timer;
+let me=null, products=[], moves=[], cat='Tous', q='', view='stock', flt='', loginTab='owner', deferred=null, timer;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>new Intl.NumberFormat('fr-FR').format(n);
@@ -74,24 +74,25 @@ function render(){
  if(view=='graph') drawCharts();
 }
 function stockView(){
- const low=products.filter(p=>p.quantity<=p.alert_threshold).length;
- const exp=products.filter(p=>p.quantity>0&&p.expiry_date&&days(p.expiry_date)<15).length;
+ const rup=products.filter(p=>p.quantity<=0).length;
+ const bas=products.filter(p=>p.quantity>0&&p.quantity<=p.alert_threshold).length;
+ const ring=f=>flt==f?'outline:3px solid #1B5E20':'';
  const val=products.reduce((s,p)=>s+p.quantity*p.price,0);
  return `<div class="grid grid-cols-2 gap-2">
  <div class="card"><div class="text-xs text-gray-500">Références</div><b class="text-2xl">${products.length}</b></div>
- <div class="card"><div class="text-xs text-gray-500">🔴 Ruptures / critique</div><b class="text-2xl text-red-600">${low}</b></div>
- <div class="card"><div class="text-xs text-gray-500">🟠 Péremption &lt; 15 j</div><b class="text-2xl text-orange-500">${exp}</b></div>
+ <div class="card cursor-pointer" style="${ring('rupture')}" onclick="flt=flt=='rupture'?'':'rupture';render()"><div class="text-xs text-gray-500">🔴 Ruptures</div><b class="text-2xl text-red-600">${rup}</b></div>
+ <div class="card cursor-pointer" style="${ring('seuil')}" onclick="flt=flt=='seuil'?'':'seuil';render()"><div class="text-xs text-gray-500">🟠 Bas de seuil</div><b class="text-2xl text-orange-500">${bas}</b></div>
  ${isOwner()?`<div class="card"><div class="text-xs text-gray-500">Valeur du stock</div><b class="text-xl" style="color:var(--g)">${fmt(val)}</b></div>`:''}</div>
  <input class="inp mt-3" placeholder="🔍 Rechercher un produit" value="${esc(q)}" oninput="q=this.value;renderList()">
  <div class="flex gap-2 overflow-x-auto py-3">${['Tous',...CATS].map(c=>`<button class="chip ${cat==c?'on':''}" onclick="cat='${c.replace(/'/g,"\\'")}';render()">${c}</button>`).join('')}</div>
  ${isOwner()?`<button class="btn w-full mb-3" onclick="productModal()">+ Nouveau produit</button>`:''}<div id="list" class="space-y-2"></div>`;
 }
 function renderList(){
- const l=products.filter(p=>(cat=='Tous'||p.category==cat)&&p.name.toLowerCase().includes(q.toLowerCase()));
+ const l=products.filter(p=>(cat=='Tous'||p.category==cat)&&p.name.toLowerCase().includes(q.toLowerCase())&&(flt=='rupture'?p.quantity<=0:flt=='seuil'?p.quantity>0&&p.quantity<=p.alert_threshold:true));
  $('#list').innerHTML=l.map(p=>{const d=days(p.expiry_date),low=p.quantity<=p.alert_threshold;
  return `<div class="card flex items-center gap-2 ${low?'border-l-4 border-red-500':''}">
  <div class="flex-1 min-w-0"><b>${esc(p.name)}</b><div class="text-xs text-gray-500">${esc(p.category)}</div>
- <div class="text-sm"><b class="${low?'text-red-600':''}">${fmt(p.quantity)}</b> ${esc(p.unit)} ${p.quantity<=0?'<span class="text-red-600">· RUPTURE</span>':low?'<span class="text-orange-600">· critique</span>':''}
+ <div class="text-sm"><b class="${low?'text-red-600':''}">${fmt(p.quantity)}</b> ${esc(p.unit)} ${p.quantity<=0?'<span class="text-red-600">· RUPTURE</span>':low?'<span class="text-orange-600">· bas de seuil</span>':''}
  ${d!==null&&d<15?`<span class="text-orange-600"> · DLC ${d<0?'dépassée':d+' j'}</span>`:''}</div></div>
  <button class="btn2 text-xl" onclick="quick('${p.id}','vente')">−</button>
  <button class="btn text-xl" onclick="quick('${p.id}','entree')">+</button>
