@@ -68,7 +68,7 @@ async function start(){
 function people(){return Object.values(pchan?.presenceState()||{}).filter(a=>a.length).map(a=>({name:a[0].name,role:a[0].role,at:a[0].at,n:a.length}))}
 function updateOnline(){const e=$('#online');if(e)e.textContent='🟢 '+people().length+' en ligne'}
 function onlineModal(){const l=people();
- modal(`<b>🟢 Connectés en ce moment (${l.length})</b>${l.map(p=>`<div class="flex justify-between border-b py-2"><span><b>${esc(p.name)}</b> <span class="text-xs text-gray-500">${p.role=='owner'?'propriétaire':'gérant'}${p.n>1?' · '+p.n+' appareils':''}</span></span>
+ modal(`<b>🟢 Connectés en ce moment (${l.length})</b>${l.map(p=>`<div class="flex justify-between border-b py-2"><span><b>${esc(p.name)}</b> ${p.n>1?'<span class="text-xs text-gray-500">'+p.n+' appareils</span>':''}</span>
  <span class="text-xs text-gray-400">depuis ${new Date(p.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span></div>`).join('')}
  <p class="text-xs text-gray-500">Apparaît ici toute personne qui a l'application ouverte.</p><button class="btn w-full" onclick="closeModal()">Fermer</button>`)}
 async function load(){
@@ -79,7 +79,7 @@ async function load(){
 function render(){
  const tabs=[['stock','📦 Stock'],['graph','📊 Graphiques'],['hist','🕘 Historique'],['set','⚙️ Réglages']];
  $('#app').innerHTML=`<header class="sticky top-0 z-10 flex items-center gap-3 p-3 text-white" style="background:var(--o)">${logo}
- <div class="flex-1"><b>CHARIFAT BOUTIQUE</b><div class="text-xs opacity-90">${esc(me.name)} · ${isOwner()?'Propriétaire':'Gérant'}</div></div>
+ <div class="flex-1"><b>CHARIFAT BOUTIQUE</b><div class="text-xs opacity-90">${esc(me.name)}</div></div>
  ${isOwner()?'<button id="online" onclick="onlineModal()" class="text-sm bg-white/25 rounded-full px-3 py-1">🟢 …</button>':''}
  <button onclick="logout()" class="text-sm underline">Quitter</button></header>
  <nav class="flex bg-white shadow-sm">${tabs.map(t=>`<button class="tab ${view==t[0]?'on':''}" onclick="view='${t[0]}';render()">${t[1]}</button>`).join('')}</nav>
@@ -118,7 +118,7 @@ function histView(){
  return `<div class="space-y-2">${moves.slice(0,200).map(m=>`<div class="card text-sm"><div class="flex justify-between"><b>${esc(m.product_name)}</b>
  <b class="${m.qty_change<0?'text-red-600':'text-green-700'}">${m.qty_change>0?'+':''}${fmt(m.qty_change)}</b></div>
  <div>${TYPES[m.type]} · ${fmt(m.stock_before)} → ${fmt(m.stock_after)}</div>${m.note?`<div class="text-gray-500">${esc(m.note)}</div>`:''}
- <div class="text-xs text-gray-400">${esc(m.user_name)} (${m.user_role=='owner'?'propriétaire':'gérant'}) · ${new Date(m.created_at).toLocaleString('fr-FR')}</div>
+ <div class="text-xs text-gray-400">${esc(m.user_name)} · ${new Date(m.created_at).toLocaleString('fr-FR')}</div>
  ${isOwner()?`<button class="text-xs text-red-600" onclick="delMove('${m.id}')">Supprimer</button>`:''}</div>`).join('')||'<p class="text-center text-gray-500">Aucun mouvement</p>'}</div>`;
 }
 let charts=[];
