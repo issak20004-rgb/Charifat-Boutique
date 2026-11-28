@@ -150,10 +150,27 @@ function setView(){
  return `<div class="space-y-3"><div class="card"><b>🔔 Notifications</b><p class="text-sm text-gray-500 my-2">Alertes même téléphone verrouillé.</p>
  <button class="btn w-full" onclick="enablePush()">Activer les notifications</button></div>
  <div class="card"><b>📲 Installer l'application</b><button class="btn w-full mt-2" onclick="installApp()">Installer l'application</button></div>
- ${isOwner()?`<div class="card"><b>🔑 Code Propriétaire (connexion gérants)</b><div class="flex gap-2 mt-2"><input id="code" class="inp" placeholder="Chargement…"><button class="btn" onclick="saveCode()">OK</button></div></div><div class="card"><b>👥 Gérants</b><div id="mgrs" class="mt-2 text-sm">Chargement…</div></div>`:''}</div>`;
+ ${isOwner()?`<div class="card"><b>🔑 Code Propriétaire (connexion gérants)</b><div class="flex gap-2 mt-2"><input id="code" class="inp" placeholder="Chargement…"><button class="btn" onclick="saveCode()">OK</button></div></div><div class="card"><b>💾 Sauvegarde</b><p class="text-sm text-gray-500 my-2">Télécharge un fichier Excel avec tous les produits et tout l'historique.</p><button id="exp" class="btn w-full" onclick="exportExcel()">Exporter en Excel</button></div><div class="card"><b>👥 Gérants</b><div id="mgrs" class="mt-2 text-sm">Chargement…</div></div>`:''}</div>`;
 }
 async function fillCode(){const {data}=await sb.from('shop_settings').select('owner_code').eq('id',1).single();if($('#code'))$('#code').value=data?.owner_code||''}
 const _r=render; render=function(){_r();if(view=='set'&&isOwner()){fillCode();fillMgrs()}};
+async function exportExcel(){
+ if(typeof XLSX==='undefined') return alert('Export indisponible : vérifiez votre connexion Internet');
+ const b=$('#exp'); if(b){b.disabled=true;b.textContent='Préparation…'}
+ try{
+  const {data:prods,error:e1}=await sb.from('products').select('*').order('name'); if(e1) throw e1;
+  let all=[],from=0;
+  for(;;){const {data,error}=await sb.from('stock_movements').select('*').order('created_at',{ascending:false}).range(from,from+999);
+   if(error) throw error; all=all.concat(data); if(data.length<1000) break; from+=1000}
+  const P=prods.map(p=>({'Produit':p.name,'Catégorie':p.category,'Unité':p.unit,'Quantité':p.quantity,"Seuil d'alerte":p.alert_threshold,'Prix unitaire':p.price,'Valeur':p.quantity*p.price,'Date de péremption':p.expiry_date||''}));
+  const H=all.map(m=>({'Date':new Date(m.created_at).toLocaleString('fr-FR'),'Produit':m.product_name,'Type':TYPES[m.type],'Quantité modifiée':m.qty_change,'Stock avant':m.stock_before,'Stock après':m.stock_after,'Note':m.note||'','Utilisateur':m.user_name,'Rôle':m.user_role=='owner'?'Propriétaire':'Gérant'}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(P),'Produits');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(H),'Historique');
+  XLSX.writeFile(wb,'charifat-boutique-'+new Date().toLocaleDateString('sv-SE')+'.xlsx');
+ }catch(e){alert('Erreur export : '+(e.message||e))}
+ if(b){b.disabled=false;b.textContent='Exporter en Excel'}
+}
 async function checkAccess(){if(!me)return;
  const {data,error}=await sb.from('app_users').select('blocked').eq('user_id',me.user_id).maybeSingle();
  if(error)return; if(!data||data.blocked){alert("Votre accès a été retiré par le propriétaire.");await logout()}}
