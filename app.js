@@ -4,10 +4,11 @@ const SUPABASE_ANON_KEY = 'sb_publishable_MGFI1UB-daHCevroNB60mg_wz1UMbFT';
 const VAPID_PUBLIC_KEY = 'BNiN0c-DMxoS4O9_vGLZ5cuyTqDTvbo0CXvvLHfXU8o2wEk0Rs56_-SHIqGb3zXBMcImpJDvT7Koi5YbFWoGTNI';
 /* ================================================== */
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const DEVICE=(()=>{try{let d=localStorage.getItem('cf_dev');if(!d){d=crypto.randomUUID();localStorage.setItem('cf_dev',d)}return d}catch{return null}})();
 const CATS = ['Céréales & Féculents','Huiles & Condiments','Produits laitiers','Conserves','Produits frais','Épicerie sèche'];
 const UNITS = ['sac','carton','kg','litre','bouteille','paquet','unité'];
 const TYPES = {entree:'Entrée livraison',vente:'Vente',perte:'Perte / Péremption',inventaire:'Inventaire'};
-let me=null, products=[], moves=[], cat='Tous', q='', view='stock', flt='', loginTab='owner', deferred=null, timer;
+let me=null, products=[], moves=[], cat='Tous', q='', view='stock', flt='', pchan=null, loginTab='owner', deferred=null, timer;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>new Intl.NumberFormat('fr-FR').format(n);
@@ -25,6 +26,7 @@ async function boot(){
 async function loadProfile(){
  const {data:{user}}=await sb.auth.getUser(); if(!user) return;
  const {data}=await sb.from('app_users').select('*').eq('user_id',user.id).maybeSingle(); me=data;
+ if(me&&me.blocked){me=null;await sb.auth.signOut();alert('Votre accès a été bloqué par le propriétaire.')}
 }
 function loginView(err=''){
  $('#app').innerHTML=`<div class="p-6 pt-12 text-center">
@@ -45,19 +47,30 @@ async function login(){
   const r=await sb.rpc('claim_owner'); if(r.error) return loginView(r.error.message);
  } else {
   const {error}=await sb.auth.signInAnonymously(); if(error) return loginView(error.message);
-  const {data}=await sb.rpc('manager_login',{p_name:a,p_code:b});
+  const {data}=await sb.rpc('manager_login',{p_name:a,p_code:b,p_device:DEVICE});
   if(!data){await sb.auth.signOut();return loginView('Nom ou code incorrect');}
  }
  await loadProfile(); start();
 }
-async function logout(){await sb.auth.signOut();me=null;loginView()}
+async function logout(){await sb.removeAllChannels();pchan=null;await sb.auth.signOut();me=null;loginView()}
 
 async function start(){
  await load(); render();
+ if(!isOwner()&&DEVICE) sb.rpc('register_device',{p_device:DEVICE});
+ clearInterval(window._ca); window._ca=setInterval(checkAccess,20000);
  const ch=()=>{clearTimeout(timer);timer=setTimeout(async()=>{await load();render()},300)};
  sb.channel('live').on('postgres_changes',{event:'*',schema:'public',table:'products'},ch)
   .on('postgres_changes',{event:'*',schema:'public',table:'stock_movements'},ch).subscribe();
+ pchan=sb.channel('presence-room',{config:{presence:{key:me.user_id}}});
+ pchan.on('presence',{event:'sync'},()=>{updateOnline();if(view=='set'&&isOwner())fillMgrs()}).subscribe(async st=>{
+  if(st==='SUBSCRIBED') await pchan.track({name:me.name,role:me.role,at:new Date().toISOString()})});
 }
+function people(){return Object.values(pchan?.presenceState()||{}).filter(a=>a.length).map(a=>({name:a[0].name,role:a[0].role,at:a[0].at,n:a.length}))}
+function updateOnline(){const e=$('#online');if(e)e.textContent='🟢 '+people().length+' en ligne'}
+function onlineModal(){const l=people();
+ modal(`<b>🟢 Connectés en ce moment (${l.length})</b>${l.map(p=>`<div class="flex justify-between border-b py-2"><span><b>${esc(p.name)}</b> <span class="text-xs text-gray-500">${p.role=='owner'?'propriétaire':'gérant'}${p.n>1?' · '+p.n+' appareils':''}</span></span>
+ <span class="text-xs text-gray-400">depuis ${new Date(p.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span></div>`).join('')}
+ <p class="text-xs text-gray-500">Apparaît ici toute personne qui a l'application ouverte.</p><button class="btn w-full" onclick="closeModal()">Fermer</button>`)}
 async function load(){
  const [p,m]=await Promise.all([sb.from('products').select('*').order('name'),
   sb.from('stock_movements').select('*').order('created_at',{ascending:false}).limit(1000)]);
@@ -67,11 +80,13 @@ function render(){
  const tabs=[['stock','📦 Stock'],['graph','📊 Graphiques'],['hist','🕘 Historique'],['set','⚙️ Réglages']];
  $('#app').innerHTML=`<header class="sticky top-0 z-10 flex items-center gap-3 p-3 text-white" style="background:var(--o)">${logo}
  <div class="flex-1"><b>CHARIFAT BOUTIQUE</b><div class="text-xs opacity-90">${esc(me.name)} · ${isOwner()?'Propriétaire':'Gérant'}</div></div>
+ ${isOwner()?'<button id="online" onclick="onlineModal()" class="text-sm bg-white/25 rounded-full px-3 py-1">🟢 …</button>':''}
  <button onclick="logout()" class="text-sm underline">Quitter</button></header>
  <nav class="flex bg-white shadow-sm">${tabs.map(t=>`<button class="tab ${view==t[0]?'on':''}" onclick="view='${t[0]}';render()">${t[1]}</button>`).join('')}</nav>
  <main class="p-3 pb-24">${view=='stock'?stockView():view=='hist'?histView():view=='graph'?graphView():setView()}</main>`;
  if(view=='stock') renderList();
  if(view=='graph') drawCharts();
+ updateOnline();
 }
 function stockView(){
  const rup=products.filter(p=>p.quantity<=0).length;
@@ -135,10 +150,27 @@ function setView(){
  return `<div class="space-y-3"><div class="card"><b>🔔 Notifications</b><p class="text-sm text-gray-500 my-2">Alertes même téléphone verrouillé.</p>
  <button class="btn w-full" onclick="enablePush()">Activer les notifications</button></div>
  <div class="card"><b>📲 Installer l'application</b><button class="btn w-full mt-2" onclick="installApp()">Installer l'application</button></div>
- ${isOwner()?`<div class="card"><b>🔑 Code Propriétaire (connexion gérants)</b><div class="flex gap-2 mt-2"><input id="code" class="inp" placeholder="Chargement…"><button class="btn" onclick="saveCode()">OK</button></div></div>`:''}</div>`;
+ ${isOwner()?`<div class="card"><b>🔑 Code Propriétaire (connexion gérants)</b><div class="flex gap-2 mt-2"><input id="code" class="inp" placeholder="Chargement…"><button class="btn" onclick="saveCode()">OK</button></div></div><div class="card"><b>👥 Gérants</b><div id="mgrs" class="mt-2 text-sm">Chargement…</div></div>`:''}</div>`;
 }
 async function fillCode(){const {data}=await sb.from('shop_settings').select('owner_code').eq('id',1).single();if($('#code'))$('#code').value=data?.owner_code||''}
-const _r=render; render=function(){_r();if(view=='set'&&isOwner())fillCode()};
+const _r=render; render=function(){_r();if(view=='set'&&isOwner()){fillCode();fillMgrs()}};
+async function checkAccess(){if(!me)return;
+ const {data,error}=await sb.from('app_users').select('blocked').eq('user_id',me.user_id).maybeSingle();
+ if(error)return; if(!data||data.blocked){alert("Votre accès a été retiré par le propriétaire.");await logout()}}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkAccess()});
+async function fillMgrs(){const el=$('#mgrs');if(!el)return;
+ const {data,error}=await sb.from('app_users').select('*').eq('role','manager').order('created_at',{ascending:false});
+ if(error){el.textContent=error.message;return}
+ const on=new Set(Object.keys(pchan?.presenceState()||{}));
+ el.innerHTML=(data||[]).map(u=>`<div class="border-b py-2"><div class="flex justify-between items-center"><span><b>${esc(u.name)}</b>
+ ${u.blocked?'<span class="text-red-600"> · 🔴 bloqué</span>':on.has(u.user_id)?'<span class="text-green-700"> · 🟢 en ligne</span>':'<span class="text-gray-400"> · ⚪ hors ligne</span>'}</span></div>
+ <div class="text-xs text-gray-400">Appareil ${u.device_id?'…'+esc(u.device_id.slice(-4)):'inconnu'} · ajouté le ${new Date(u.created_at).toLocaleDateString('fr-FR')}</div>
+ <div class="flex gap-2 mt-2"><button class="btn2 flex-1" onclick="blockUser('${u.user_id}',${!u.blocked})">${u.blocked?'Débloquer':'Bloquer'}</button>
+ <button class="btn2 flex-1 text-red-600" onclick="deleteUser('${u.user_id}')">Supprimer</button></div></div>`).join('')||'<p class="text-gray-500">Aucun gérant pour le moment</p>'}
+async function blockUser(id,b){if(!confirm(b?'Bloquer ce gérant et son appareil ?':'Débloquer ce gérant ?'))return;
+ const {error}=await sb.rpc('set_blocked',{p_user:id,p_block:b});if(error)return alert(error.message);fillMgrs()}
+async function deleteUser(id){if(!confirm('Supprimer ce gérant ? Il sera déconnecté.'))return;
+ const {error}=await sb.rpc('delete_manager',{p_user:id});if(error)return alert(error.message);fillMgrs()}
 async function saveCode(){const v=$('#code').value.trim();if(v.length<4)return alert('Minimum 4 caractères');
  const {error}=await sb.from('shop_settings').update({owner_code:v}).eq('id',1);alert(error?error.message:'Code mis à jour ✅')}
 
